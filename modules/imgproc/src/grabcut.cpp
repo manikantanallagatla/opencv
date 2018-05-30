@@ -41,9 +41,73 @@
 
 #include "precomp.hpp"
 #include "gcgraph.hpp"
+#include <iostream>
+#include <fstream>
 #include <limits>
 
 using namespace cv;
+
+static void put1dArrayintoFile(std::string fileName, double * matrix, int size)
+{
+    std::ofstream out((fileName + ".txt").c_str());
+    if(!out)
+    {  
+        std::cout<<"Cannot open output file\n";
+        return ;
+    }
+    for(int x = 0; x < size; x++)
+    {
+        out << matrix[x]<< " ";
+    }
+    out.close();
+}
+
+static void put2dArrayintoFile(std::string fileName, Mat matrix, int height, int width)
+{
+    std::ofstream out((fileName + ".txt").c_str());
+    if(!out)
+    {  
+        std::cout<<"Cannot open output file\n";
+        return ;
+    }
+    Point p;
+    for( p.y = 0; p.y < height; p.y++ )
+    {
+        for( p.x = 0; p.x < width; p.x++ )
+        {
+            
+            out << matrix.at<int>(p) << " ";
+        }
+        out << "\n";
+    }
+    
+    out.close();
+}
+
+static void put2dArrayintoFile1(std::string fileName, Mat matrix)
+{
+    std::ofstream out((fileName + ".txt").c_str());
+    if(!out)
+    {  
+        std::cout<<"Cannot open output file\n";
+        return ;
+    }
+
+    Point p;
+    for( p.y = 0; p.y < matrix.rows; p.y++ )
+    {
+        for( p.x = 0; p.x < matrix.cols; p.x++ )
+        {
+            if(matrix.at<uchar>(p) == GC_PR_BGD || matrix.at<uchar>(p) == GC_BGD)
+                out << "1" << " ";
+            else
+                out << "0" << " ";
+        }
+        out << "\n";
+    }
+    
+    out.close();
+}
 
 /*
 This is implementation of image segmentation algorithm GrabCut described in
@@ -68,9 +132,10 @@ public:
     void addSample( int ci, const Vec3d color );
     void endLearning();
 
-private:
+
     void calcInverseCovAndDeterm( int ci );
     Mat model;
+    int sizeCoeff;
     double* coefs;
     double* mean;
     double* cov;
@@ -96,6 +161,7 @@ GMM::GMM( Mat& _model )
         CV_Error( CV_StsBadArg, "_model must have CV_64FC1 type, rows == 1 and cols == 13*componentsCount" );
 
     model = _model;
+    sizeCoeff = modelSize*componentsCount;
 
     coefs = model.ptr<double>(0);
     mean = coefs + componentsCount;
@@ -394,6 +460,14 @@ static void initGMMs( const Mat& img, const Mat& mask, GMM& bgdGMM, GMM& fgdGMM 
     for( int i = 0; i < (int)fgdSamples.size(); i++ )
         fgdGMM.addSample( fgdLabels.at<int>(i,0), fgdSamples[i] );
     fgdGMM.endLearning();
+
+    put1dArrayintoFile("bgdGMM_coeff initgmm", bgdGMM.coefs, bgdGMM.sizeCoeff);
+    put1dArrayintoFile("bgdGMM_mean initgmm", bgdGMM.mean, bgdGMM.sizeCoeff);
+    put1dArrayintoFile("bgdGMM_cov initgmm", bgdGMM.cov, bgdGMM.sizeCoeff);
+
+    put1dArrayintoFile("fgdGMM_coeff initgmm", fgdGMM.coefs, fgdGMM.sizeCoeff);
+    put1dArrayintoFile("fgdGMM_mean initgmm", fgdGMM.mean, fgdGMM.sizeCoeff);
+    put1dArrayintoFile("fgdGMM_cov initgmm", fgdGMM.cov, fgdGMM.sizeCoeff);
 }
 
 /*
@@ -543,6 +617,10 @@ void cv::grabCut( InputArray _img, InputOutputArray _mask, Rect rect,
         CV_Error( CV_StsBadArg, "image must have CV_8UC3 type" );
 
     GMM bgdGMM( bgdModel ), fgdGMM( fgdModel );
+
+    // put1dArrayintoFile("bgdModelinitial", bgdModel, bgdGMM.sizeCoeff);
+    // put1dArrayintoFile("fgdModelinitial", fgdModel, fgdGMM.sizeCoeff);
+
     Mat compIdxs( img.size(), CV_32SC1 );
 
     if( mode == GC_INIT_WITH_RECT || mode == GC_INIT_WITH_MASK )
@@ -574,9 +652,20 @@ void cv::grabCut( InputArray _img, InputOutputArray _mask, Rect rect,
     {
         GCGraph<double> graph;
         assignGMMsComponents( img, mask, bgdGMM, fgdGMM, compIdxs );
+        put2dArrayintoFile("assigned compInds " + std::to_string(i), compIdxs, img.rows, img.cols);
+        // put1dArrayintoFile("bgdModelinitial", bgdModel, bgdGMM.sizeCoeff);
+        // put1dArrayintoFile("fgdModelinitial", fgdModel, fgdGMM.sizeCoeff);
         if( mode != GC_EVAL_FREEZE_MODEL )
             learnGMMs( img, mask, compIdxs, bgdGMM, fgdGMM );
+        put1dArrayintoFile("bgdGMM_coeff learnGMMs"+ std::to_string(i), bgdGMM.coefs, bgdGMM.sizeCoeff);
+        put1dArrayintoFile("bgdGMM_mean learnGMMs"+ std::to_string(i), bgdGMM.mean, bgdGMM.sizeCoeff);
+        put1dArrayintoFile("bgdGMM_cov learnGMMs"+ std::to_string(i), bgdGMM.cov, bgdGMM.sizeCoeff);
+
+        put1dArrayintoFile("fgdGMM_coeff learnGMMs"+ std::to_string(i), fgdGMM.coefs, fgdGMM.sizeCoeff);
+        put1dArrayintoFile("fgdGMM_mean learnGMMs"+ std::to_string(i), fgdGMM.mean, fgdGMM.sizeCoeff);
+        put1dArrayintoFile("fgdGMM_cov learnGMMs"+ std::to_string(i), fgdGMM.cov, fgdGMM.sizeCoeff);
         constructGCGraph(img, mask, bgdGMM, fgdGMM, lambda, leftW, upleftW, upW, uprightW, graph );
         estimateSegmentation( graph, mask );
+        put2dArrayintoFile1("assigned mask " + std::to_string(i), mask);
     }
 }
