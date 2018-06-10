@@ -47,6 +47,10 @@
 
 using namespace cv;
 
+int centreX = 0;
+int centreY = 0;
+int weightShape = 90*50;
+
 static void put1dArrayintoFile(std::string fileName, double * matrix, int size)
 {
     std::ofstream out((fileName + ".txt").c_str());
@@ -420,6 +424,9 @@ static void initMaskWithRect( Mat& mask, Size imgSize, Rect rect )
     rect.height = std::min(rect.height, imgSize.height-rect.y);
 
     (mask(rect)).setTo( Scalar(GC_PR_FGD) );
+
+    centreX = rect.x + (rect.width / 2);
+    centreY = rect.y + (rect.height / 2);
 }
 
 /*
@@ -551,8 +558,7 @@ static void constructGCGraph( const Mat& img, const Mat& mask, const GMM& bgdGMM
                 fromSource = lambda;
                 toSink = 0;
             }
-            graph.addTermWeights( vtxIdx, fromSource, toSink );
-
+            
             // set n-weights
             if( p.x>0 )
             {
@@ -562,6 +568,16 @@ static void constructGCGraph( const Mat& img, const Mat& mask, const GMM& bgdGMM
             if( p.x>0 && p.y>0 )
             {
                 double w = upleftW.at<double>(p);
+                Point p_neighbour;
+                p_neighbour.x = p.x - 1;
+                p_neighbour.y = p.y - 1;
+                if((mask.at<uchar>(p_neighbour) == GC_FGD && p.x < centreX && p.y < centreY && p_neighbour.x < centreX && p_neighbour.y < centreY) || 
+                (mask.at<uchar>(p) == GC_FGD && p.x > centreX && p.y > centreY && p_neighbour.x > centreX && p_neighbour.y > centreY))
+                {
+                    fromSource = weightShape;
+                    toSink = 0;
+                }
+
                 graph.addEdges( vtxIdx, vtxIdx-img.cols-1, w, w );
             }
             if( p.y>0 )
@@ -572,8 +588,18 @@ static void constructGCGraph( const Mat& img, const Mat& mask, const GMM& bgdGMM
             if( p.x<img.cols-1 && p.y>0 )
             {
                 double w = uprightW.at<double>(p);
+                Point p_neighbour;
+                p_neighbour.x = p.x - 1;
+                p_neighbour.y = p.y + 1;
+                if((mask.at<uchar>(p_neighbour) == GC_FGD && p.x < centreX && p.y > centreY && p_neighbour.x < centreX && p_neighbour.y > centreY) || 
+                (mask.at<uchar>(p) == GC_FGD && p.x > centreX && p.y < centreY && p_neighbour.x > centreX && p_neighbour.y < centreY))
+                {
+                    fromSource = weightShape;
+                    toSink = 0;
+                }
                 graph.addEdges( vtxIdx, vtxIdx-img.cols+1, w, w );
             }
+            graph.addTermWeights( vtxIdx, fromSource, toSink );
         }
     }
 }
