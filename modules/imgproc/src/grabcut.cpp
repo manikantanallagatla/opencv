@@ -794,13 +794,13 @@ void cv::grabCut( InputArray _img, InputOutputArray _mask, Rect rect,
     if (myfile.is_open())
     {
         getline (myfile,line);
-        color_weight = atof(line.c_str());
+        color_weight = atof(line.c_str()) + 0.0;
         getline (myfile,line);
-        terminal_weight = atof(line.c_str());
+        terminal_weight = atof(line.c_str()) + 0.0;
         getline (myfile,line);
-        smoothness_weight = atof(line.c_str());
+        smoothness_weight = atof(line.c_str()) + 0.0;
         getline (myfile,line);
-        shape_weight = atof(line.c_str());
+        shape_weight = atof(line.c_str()) + 0.0;
         myfile.close();
     }
     std::cout<<color_weight <<" "<<terminal_weight << " "<<smoothness_weight <<" "<<shape_weight<< "\n";
