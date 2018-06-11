@@ -44,12 +44,12 @@
 #include <iostream>
 #include <fstream>
 #include <limits>
+#include <stdlib.h>
 
 using namespace cv;
 
 int centreX = 0;
 int centreY = 0;
-int weightShape = 90*50;
 
 static void put1dArrayintoFile(std::string fileName, double * matrix, int size)
 {
@@ -527,13 +527,13 @@ static void learnGMMs( const Mat& img, const Mat& mask, const Mat& compIdxs, GMM
 */
 static void constructGCGraph( const Mat& img, const Mat& mask, const GMM& bgdGMM, const GMM& fgdGMM, double lambda,
                        const Mat& leftW, const Mat& upleftW, const Mat& upW, const Mat& uprightW,
-                       GCGraph<double>& graph )
+                       GCGraph<double>& graph , bool **dummyarray, double color_weight, double terminal_weight, double smoothness_weight, double shape_weight)
 {
     int vtxCount = img.cols*img.rows,
         edgeCount = 2*(4*img.cols*img.rows - 3*(img.cols + img.rows) + 2);
     graph.create(vtxCount, edgeCount);
     Point p;
-    for( p.y = 0; p.y < img.rows; p.y++ )
+    for( p.y = 0; p.y < centreX; p.y++ )
     {
         for( p.x = 0; p.x < img.cols; p.x++)
         {
@@ -545,57 +545,156 @@ static void constructGCGraph( const Mat& img, const Mat& mask, const GMM& bgdGMM
             double fromSource, toSink;
             if( mask.at<uchar>(p) == GC_PR_BGD || mask.at<uchar>(p) == GC_PR_FGD )
             {
-                fromSource = -log( bgdGMM(color) );
-                toSink = -log( fgdGMM(color) );
+                fromSource = -log( bgdGMM(color) ) * color_weight;
+                toSink = -log( fgdGMM(color) ) * color_weight;
             }
             else if( mask.at<uchar>(p) == GC_BGD )
             {
                 fromSource = 0;
-                toSink = lambda;
+                toSink = lambda * terminal_weight;
             }
             else // GC_FGD
             {
-                fromSource = lambda;
+                fromSource = lambda * terminal_weight;
                 toSink = 0;
             }
             
             // set n-weights
             if( p.x>0 )
             {
-                double w = leftW.at<double>(p);
+                double w = leftW.at<double>(p) * smoothness_weight;
                 graph.addEdges( vtxIdx, vtxIdx-1, w, w );
             }
             if( p.x>0 && p.y>0 )
             {
-                double w = upleftW.at<double>(p);
+                double w = upleftW.at<double>(p) * smoothness_weight;
                 Point p_neighbour;
                 p_neighbour.x = p.x - 1;
                 p_neighbour.y = p.y - 1;
-                if((mask.at<uchar>(p_neighbour) == GC_FGD && p.x < centreX && p.y < centreY && p_neighbour.x < centreX && p_neighbour.y < centreY) || 
-                (mask.at<uchar>(p) == GC_FGD && p.x > centreX && p.y > centreY && p_neighbour.x > centreX && p_neighbour.y > centreY))
+                if(shape_weight > 0 && dummyarray[p_neighbour.y][p_neighbour.x] == true && p.x < centreX && p.y < centreY && p_neighbour.x < centreX && p_neighbour.y < centreY)
                 {
-                    fromSource = weightShape;
+                    fromSource = shape_weight;
                     toSink = 0;
+                    dummyarray[p.y][p.x] = true;
+                    // mask.at<uchar>(p) = GC_FGD;
+                }
+                if(shape_weight > 0 && dummyarray[p.y][p.x] == true && p.x > centreX && p.y > centreY && p_neighbour.x > centreX && p_neighbour.y > centreY)
+                {
+                    fromSource = shape_weight;
+                    toSink = 0;
+                    dummyarray[p_neighbour.y][p_neighbour.x] = true;
                 }
 
                 graph.addEdges( vtxIdx, vtxIdx-img.cols-1, w, w );
             }
             if( p.y>0 )
             {
-                double w = upW.at<double>(p);
+                double w = upW.at<double>(p) * smoothness_weight;
                 graph.addEdges( vtxIdx, vtxIdx-img.cols, w, w );
             }
             if( p.x<img.cols-1 && p.y>0 )
             {
-                double w = uprightW.at<double>(p);
+                double w = uprightW.at<double>(p) * smoothness_weight;
+                Point p_neighbour;
+                p_neighbour.x = p.x + 1;
+                p_neighbour.y = p.y - 1;
+                if(shape_weight > 0 && dummyarray[p_neighbour.y][p_neighbour.x] == true && p.x > centreX && p.y < centreY && p_neighbour.x > centreX && p_neighbour.y < centreY)
+                {
+                    fromSource = shape_weight;
+                    toSink = 0;
+                    dummyarray[p.y][p.x] = true;
+                }
+                if(shape_weight > 0 && dummyarray[p.y][p.x] == true && p.x < centreX && p.y > centreY && p_neighbour.x < centreX && p_neighbour.y > centreY)
+                {
+                    fromSource = shape_weight;
+                    toSink = 0;
+                    dummyarray[p_neighbour.y][p_neighbour.x] = true;
+                }
+                graph.addEdges( vtxIdx, vtxIdx-img.cols+1, w, w );
+            }
+            graph.addTermWeights( vtxIdx, fromSource, toSink );
+        }
+    }
+    for( p.y = img.rows - 1; p.y >= centreX; p.y-- )
+    {
+                for( p.x = 0; p.x < img.cols; p.x++)
+        {
+            // add node
+            int vtxIdx = graph.addVtx();
+            Vec3b color = img.at<Vec3b>(p);
+
+            // set t-weights
+            double fromSource, toSink;
+            if( mask.at<uchar>(p) == GC_PR_BGD || mask.at<uchar>(p) == GC_PR_FGD )
+            {
+                fromSource = -log( bgdGMM(color) ) * color_weight;
+                toSink = -log( fgdGMM(color) ) * color_weight;
+            }
+            else if( mask.at<uchar>(p) == GC_BGD )
+            {
+                fromSource = 0;
+                toSink = lambda * terminal_weight;
+            }
+            else // GC_FGD
+            {
+                fromSource = lambda * terminal_weight;
+                toSink = 0;
+            }
+            if(mask.at<uchar>(p) == GC_FGD)
+            {
+                dummyarray[p.y][p.x] = true;
+            }
+            
+            // set n-weights
+            if( p.x>0 )
+            {
+                double w = leftW.at<double>(p) * smoothness_weight;
+                graph.addEdges( vtxIdx, vtxIdx-1, w, w );
+            }
+            if( p.x>0 && p.y>0 )
+            {
+                double w = upleftW.at<double>(p) * smoothness_weight;
                 Point p_neighbour;
                 p_neighbour.x = p.x - 1;
-                p_neighbour.y = p.y + 1;
-                if((mask.at<uchar>(p_neighbour) == GC_FGD && p.x < centreX && p.y > centreY && p_neighbour.x < centreX && p_neighbour.y > centreY) || 
-                (mask.at<uchar>(p) == GC_FGD && p.x > centreX && p.y < centreY && p_neighbour.x > centreX && p_neighbour.y < centreY))
+                p_neighbour.y = p.y - 1;
+                if(shape_weight > 0 && dummyarray[p_neighbour.y][p_neighbour.x] == true && p.x < centreX && p.y < centreY && p_neighbour.x < centreX && p_neighbour.y < centreY)
                 {
-                    fromSource = weightShape;
+                    fromSource = shape_weight;
                     toSink = 0;
+                    dummyarray[p.y][p.x] = true;
+                    // mask.at<uchar>(p) = GC_FGD;
+                }
+                if(shape_weight > 0 && dummyarray[p.y][p.x] == true && p.x > centreX && p.y > centreY && p_neighbour.x > centreX && p_neighbour.y > centreY)
+                {
+                    fromSource = shape_weight;
+                    toSink = 0;
+                    dummyarray[p_neighbour.y][p_neighbour.x] = true;
+                }
+
+                graph.addEdges( vtxIdx, vtxIdx-img.cols-1, w, w );
+            }
+            if( p.y>0 )
+            {
+                double w = upW.at<double>(p) * smoothness_weight;
+                graph.addEdges( vtxIdx, vtxIdx-img.cols, w, w );
+            }
+            if( p.x<img.cols-1 && p.y>0 )
+            {
+                double w = uprightW.at<double>(p) * smoothness_weight;
+                Point p_neighbour;
+                p_neighbour.x = p.x + 1;
+                p_neighbour.y = p.y - 1;
+                if(shape_weight > 0 && dummyarray[p_neighbour.y][p_neighbour.x] == true && p.x > centreX && p.y < centreY && p_neighbour.x > centreX && p_neighbour.y < centreY)
+                {
+                    fromSource = shape_weight;
+                    toSink = 0;
+                    dummyarray[p.y][p.x] = true;
+                }
+                if(shape_weight > 0 && dummyarray[p.y][p.x] == true && p.x < centreX && p.y > centreY && p_neighbour.x < centreX && p_neighbour.y > centreY)
+                {
+                    fromSource = shape_weight;
+                    toSink = 0;
+                    dummyarray[p_neighbour.y][p_neighbour.x] = true;
                 }
                 graph.addEdges( vtxIdx, vtxIdx-img.cols+1, w, w );
             }
@@ -607,7 +706,7 @@ static void constructGCGraph( const Mat& img, const Mat& mask, const GMM& bgdGMM
 /*
   Estimate segmentation using MaxFlow algorithm
 */
-static void estimateSegmentation( GCGraph<double>& graph, Mat& mask )
+static void estimateSegmentation( GCGraph<double>& graph, Mat& mask , bool **dummyarray)
 {
     graph.maxFlow();
     Point p;
@@ -618,7 +717,11 @@ static void estimateSegmentation( GCGraph<double>& graph, Mat& mask )
             if( mask.at<uchar>(p) == GC_PR_BGD || mask.at<uchar>(p) == GC_PR_FGD )
             {
                 if( graph.inSourceSegment( p.y*mask.cols+p.x /*vertex index*/ ) )
+                {
                     mask.at<uchar>(p) = GC_PR_FGD;
+                    dummyarray[p.y][p.x] = true;
+
+                }
                 else
                     mask.at<uchar>(p) = GC_PR_BGD;
             }
@@ -628,7 +731,7 @@ static void estimateSegmentation( GCGraph<double>& graph, Mat& mask )
 
 void cv::grabCut( InputArray _img, InputOutputArray _mask, Rect rect,
                   InputOutputArray _bgdModel, InputOutputArray _fgdModel,
-                  int iterCount, int mode )
+                  int iterCount, int mode)
 {
     CV_INSTRUMENT_REGION()
 
@@ -636,6 +739,15 @@ void cv::grabCut( InputArray _img, InputOutputArray _mask, Rect rect,
     Mat& mask = _mask.getMatRef();
     Mat& bgdModel = _bgdModel.getMatRef();
     Mat& fgdModel = _fgdModel.getMatRef();
+    bool *dummyarray[img.rows];
+    for(int i = 0;i < img.rows;i++)
+    {
+        dummyarray[i] = new bool[img.cols];
+        for(int j =0;j<img.cols;j++)
+        {
+            dummyarray[i][j] = false;
+        }
+    }
 
     if( img.empty() )
         CV_Error( CV_StsBadArg, "image is empty" );
@@ -673,6 +785,25 @@ void cv::grabCut( InputArray _img, InputOutputArray _mask, Rect rect,
 
     Mat leftW, upleftW, upW, uprightW;
     calcNWeights( img, leftW, upleftW, upW, uprightW, beta, gamma );
+    double color_weight = 0;
+    double terminal_weight = 0;
+    double smoothness_weight = 0;
+    double shape_weight = 0;
+    std::string line;
+    std::ifstream myfile ("/Users/manikant/Documents/License-Plate-Detection/code/opencv_clone/opencv/weights.txt");
+    if (myfile.is_open())
+    {
+        getline (myfile,line);
+        color_weight = atof(line.c_str());
+        getline (myfile,line);
+        terminal_weight = atof(line.c_str());
+        getline (myfile,line);
+        smoothness_weight = atof(line.c_str());
+        getline (myfile,line);
+        shape_weight = atof(line.c_str());
+        myfile.close();
+    }
+    std::cout<<color_weight <<" "<<terminal_weight << " "<<smoothness_weight <<" "<<shape_weight<< "\n";
 
     for( int i = 0; i < iterCount; i++ )
     {
@@ -690,8 +821,8 @@ void cv::grabCut( InputArray _img, InputOutputArray _mask, Rect rect,
         put1dArrayintoFile("fgdGMM_coeff learnGMMs"+ std::to_string(i), fgdGMM.coefs, fgdGMM.sizeCoeff);
         put1dArrayintoFile("fgdGMM_mean learnGMMs"+ std::to_string(i), fgdGMM.mean, fgdGMM.sizeCoeff);
         put1dArrayintoFile("fgdGMM_cov learnGMMs"+ std::to_string(i), fgdGMM.cov, fgdGMM.sizeCoeff);
-        constructGCGraph(img, mask, bgdGMM, fgdGMM, lambda, leftW, upleftW, upW, uprightW, graph );
-        estimateSegmentation( graph, mask );
+        constructGCGraph(img, mask, bgdGMM, fgdGMM, lambda, leftW, upleftW, upW, uprightW, graph ,dummyarray, color_weight, terminal_weight, smoothness_weight, shape_weight);
+        estimateSegmentation( graph, mask , dummyarray);
         put2dArrayintoFile1("assigned mask " + std::to_string(i), mask);
     }
 }

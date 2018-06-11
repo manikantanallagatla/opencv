@@ -1,8 +1,9 @@
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
-
+#include <stdlib.h>
 #include <iostream>
+#include <fstream>
 
 using namespace std;
 using namespace cv;
@@ -246,16 +247,16 @@ void GCApplication::mouseClick( int event, int x, int y, int flags, void* )
 int GCApplication::nextIter()
 {
     if( isInitialized )
-        grabCut( *image, mask, rect, bgdModel, fgdModel, 1 );
+        grabCut( *image, mask, rect, bgdModel, fgdModel, 1);
     else
     {
         if( rectState != SET )
             return iterCount;
 
         if( lblsState == SET || prLblsState == SET )
-            grabCut( *image, mask, rect, bgdModel, fgdModel, 1, GC_INIT_WITH_MASK );
+            grabCut( *image, mask, rect, bgdModel, fgdModel, 1, GC_INIT_WITH_MASK);
         else
-            grabCut( *image, mask, rect, bgdModel, fgdModel, 1, GC_INIT_WITH_RECT );
+            grabCut( *image, mask, rect, bgdModel, fgdModel, 1, GC_INIT_WITH_RECT);
 
         isInitialized = true;
     }
@@ -292,6 +293,24 @@ int main( int argc, char** argv )
         return 1;
     }
 
+    double color_weight = atof(argv[2]);
+    double terminal_weight = atof(argv[3]);
+    double smoothness_weight = atof(argv[4]);
+    double shape_weight = atof(argv[5]);
+
+    ofstream myfile ("/Users/manikant/Documents/License-Plate-Detection/code/opencv_clone/opencv/weights.txt");
+    if (myfile.is_open())
+    {
+        myfile << color_weight;
+        myfile << "\n";
+        myfile << terminal_weight;
+        myfile << "\n";
+        myfile << smoothness_weight;
+        myfile << "\n";
+        myfile << shape_weight;
+        myfile << "\n";
+        myfile.close();
+    }
     const string winName = "image";
     namedWindow( winName, WINDOW_AUTOSIZE );
     setMouseCallback( winName, on_mouse, 0 );
