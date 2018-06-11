@@ -277,10 +277,10 @@ static void on_mouse( int event, int x, int y, int flags, void* param )
 
 int main( int argc, char** argv )
 {
-    cv::CommandLineParser parser(argc, argv, "{@input| ../data/messi5.jpg |}");
+    // cv::CommandLineParser parser(argc, argv, "{@input| ../data/messi5.jpg |}");
     help();
 
-    string filename = parser.get<string>("@input");
+    string filename = argv[5];
     if( filename.empty() )
     {
         cout << "\nDurn, empty filename" << endl;
@@ -293,10 +293,10 @@ int main( int argc, char** argv )
         return 1;
     }
 
-    double color_weight = atof(argv[2]);
-    double terminal_weight = atof(argv[3]);
-    double smoothness_weight = atof(argv[4]);
-    double shape_weight = atof(argv[5]);
+    double color_weight = atof(argv[1]);
+    double terminal_weight = atof(argv[2]);
+    double smoothness_weight = atof(argv[3]);
+    double shape_weight = atof(argv[4]);
 
     ofstream myfile ("/Users/manikant/Documents/License-Plate-Detection/code/opencv_clone/opencv/weights.txt");
     if (myfile.is_open())
